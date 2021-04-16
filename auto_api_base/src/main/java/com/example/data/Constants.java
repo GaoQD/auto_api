@@ -10,6 +10,11 @@ package com.example.data;
 public class Constants {
 
     /**
+     * 日志输出配置：控制台 false 日志文件中 true
+     */
+    public static final boolean LOG_TO_FILE = true;
+
+    /**
      * excel文件路径
      */
     public static final String EXCEL_FILE_PATH = "src/main/resources/api_testcases_xxx_v1.xls";
@@ -18,4 +23,19 @@ public class Constants {
      * 接口baseUrl地址
      */
     public static final String BASE_URI = "https://www.xxx.com";
+
+    /**
+     * 数据库URL
+     */
+    public static final String URL = "jdbc:mysql://xxx/xxx?useUnicode=true&characterEncoding=utf-8";
+
+    /**
+     * 数据库用户名
+     */
+    public static final String USER = "user";
+
+    /**
+     * 数据库密码
+     */
+    public static final String PASSWORD = "password";
 }

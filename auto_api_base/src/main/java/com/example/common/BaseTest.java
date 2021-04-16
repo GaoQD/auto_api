@@ -7,34 +7,73 @@ import com.alibaba.fastjson.JSONObject;
 import com.example.data.Constants;
 import com.example.data.Environment;
 import com.example.pojo.ExcelPojo;
+import com.example.utils.JDBCUtils;
+import io.qameta.allure.Allure;
+import io.restassured.RestAssured;
+import io.restassured.config.LogConfig;
+import io.restassured.config.RestAssuredConfig;
 import io.restassured.response.Response;
+import org.testng.Assert;
+import org.testng.annotations.BeforeTest;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.PrintStream;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static io.restassured.RestAssured.given;
+import static io.restassured.config.JsonConfig.jsonConfig;
+import static io.restassured.path.json.config.JsonPathConfig.NumberReturnType.BIG_DECIMAL;
 
 /**
  * @className: BaseTest
- * @description: TODO 测试用例脚本父类，封装了get、post、patch等请求，excel操作方法
+ * @description: TODO 测试用例脚本父类，封装了get、post、patch等请求，excel操作方法，Allure报表功能
  * @date: 2021/4/8 下午4:36
  * @author: gqd
  * @version: 1.0
  */
 public class BaseTest {
 
+    @BeforeTest
+    public void globalSetUp() {
+        RestAssured.config = RestAssuredConfig.config().jsonConfig(jsonConfig().numberReturnType(BIG_DECIMAL));
+        RestAssured.baseURI = Constants.BASE_URI;
+    }
+
     /**
-     * @description 对get、post、patch等请求做二次封装
-     * @param excelPojo  
+     * @description 对get、post、patch等请求做二次封装, 添加日志处理及Allure报表
+     * @param excelPojo
+     * @param interfaceName 对应sheet页名称，暂时手动输入
      * @return io.restassured.response.Response
      * @author gqd
      * @date 2021/4/8 下午4:47
      * @version 1.0       
      */
-    public Response request(ExcelPojo excelPojo) {
+    public Response request(ExcelPojo excelPojo, String interfaceName) {
+        /**
+         * 为每一个请求单独的进行日志保存
+         * 如果指定输出到文件的话，那么设置重定向输出到文件
+         */
+        String path;
+        if (Constants.LOG_TO_FILE) {
+            File dirPath = new File(System.getProperty("user.dir") + "/log/" + interfaceName);
+            if (!dirPath.exists()) {
+                dirPath.mkdirs();
+            }
+            path = dirPath + "/test" + excelPojo.getCaseId() + ".log";
+            PrintStream printStream = null;
+            try {
+                printStream = new PrintStream(new File(path));
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
+            RestAssured.config = RestAssured.config().logConfig(LogConfig.logConfig().defaultStream(printStream));
+        }
         String url = excelPojo.getUrl();
         String method = excelPojo.getMethod();
         String requestHeader = excelPojo.getRequestHeader();
@@ -53,7 +92,59 @@ public class BaseTest {
         } else if ("patch".equalsIgnoreCase(method)) {
             response = given().log().all().headers(headersMap).body(params).when().patch(url).then().log().all().extract().response();
         }
+        if (Constants.LOG_TO_FILE) {
+            try {
+                Allure.addAttachment("接口请求响应信息", new FileInputStream(path));
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
+        }
         return response;
+    }
+    
+    /**
+     * @description 对响应结果进行断言
+     * @param excelPojo 
+     * @param response 
+     * @return void
+     * @author gqd
+     * @date 2021/4/15 下午5:36
+     * @version 1.0       
+     */
+    public void assertResponse(ExcelPojo excelPojo, Response response) {
+        if (excelPojo.getExpected() != null) {
+            Map<String, Object> expectedMap = JSONObject.parseObject(excelPojo.getExpected(), Map.class);
+            for (String key : expectedMap.keySet()) {
+                Object expectedValue = expectedMap.get(key);
+                Object actualValue = response.jsonPath().get(key);
+                Assert.assertEquals(actualValue, expectedValue);
+            }
+        }
+    }
+    
+    /**
+     * @description 数据库断言
+     * @param excelPojo  
+     * @return void
+     * @author gqd
+     * @date 2021/4/16 上午9:15
+     * @version 1.0       
+     */
+    public void assertSQL(ExcelPojo excelPojo) {
+        String dbAssert = excelPojo.getDbAssert();
+        if (dbAssert != null) {
+            Map<String, Object> map = JSONObject.parseObject(dbAssert, Map.class);
+            for (String key : map.keySet()) {
+                Object expectedValue = map.get(key);
+                Object actualValue = JDBCUtils.querySingleData(key);
+                if (expectedValue instanceof BigDecimal) {
+                    Assert.assertEquals(actualValue, expectedValue);
+                } else if (expectedValue instanceof Integer) {
+                    Long expectValue = ((Integer) expectedValue).longValue();
+                    Assert.assertEquals(actualValue, expectValue);
+                }
+            }
+        }
     }
     
     /**
@@ -171,6 +262,8 @@ public class BaseTest {
         // 期望返回结果替换
         String expected = regexReplace(excelPojo.getExpected());
         excelPojo.setExpected(expected);
+        String dbAssert = regexReplace(excelPojo.getDbAssert());
+        excelPojo.setDbAssert(dbAssert);
         return excelPojo;
     }
 }

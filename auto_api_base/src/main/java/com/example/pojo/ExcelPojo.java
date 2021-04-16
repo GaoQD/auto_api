@@ -39,4 +39,7 @@ public class ExcelPojo {
 
     @Excel(name = "提取返回数据(extract)")
     private String extract;
+
+    @Excel(name = "数据库校验")
+    private String dbAssert;
 }
